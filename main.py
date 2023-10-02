@@ -22,26 +22,23 @@ def PlayTimeGenre(genero: str):
     # Paso 1: Filtrar juegos por género
     juegos_por_genero = games[games['genres'].str.contains(genero, case=False, na=False)]
 
-    # Paso 2: Inicializar un diccionario para realizar un seguimiento de las horas jugadas por año
-    horas_por_anio = {}
+    if juegos_por_genero.empty:
+        return {"No se encontraron juegos para el género": genero}
 
-    # Paso 3: Iterar a través de los juegos filtrados y acumular las horas jugadas por año
-    for _, juego in juegos_por_genero.iterrows():
-        juego_id = juego['id']
-        horas_jugadas = items[items['item_id'] == juego_id]['playtime_forever'].sum()
-        anio_lanzamiento = pd.to_datetime(juego['release_date']).year
+    # Paso 2: Realizar un join entre "juegos_por_genero" y "items" para obtener las horas jugadas
+    merged_df = juegos_por_genero.merge(items, left_on='id', right_on='item_id', how='inner')
 
-        if anio_lanzamiento in horas_por_anio:
-            horas_por_anio[anio_lanzamiento] += horas_jugadas
-        else:
-            horas_por_anio[anio_lanzamiento] = horas_jugadas
+    # Paso 3: Extraer el año de lanzamiento de la fecha y sumar las horas jugadas por año
+    merged_df['anio_lanzamiento'] = pd.to_datetime(merged_df['release_date']).dt.year
+    horas_por_anio = merged_df.groupby('anio_lanzamiento')['playtime_forever'].sum()
 
     # Paso 4: Encontrar el año con la mayor cantidad de horas jugadas
-    anio_max_horas = max(horas_por_anio, key=horas_por_anio.get)
+    anio_max_horas = horas_por_anio.idxmax()
 
     # Paso 5: Devolver el resultado como un diccionario JSON
     resultado = {"Año de lanzamiento con más horas jugadas para " + genero: anio_max_horas}
     return resultado
+
 
 
 @app.get('/UserForGenre/{genero}')
