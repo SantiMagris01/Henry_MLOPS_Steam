@@ -18,28 +18,6 @@ def read_root():
 formato_fecha = r'\d{4}-\d{2}-\d{2}'  # Expresión regular para 'YYYY-MM-DD'
 games = games[games['release_date'].str.match(formato_fecha, na=False)]
 
-@app.get('/PlayTimeGenre/{genero}')
-def PlayTimeGenre(genero: str):
-    # Paso 1: Filtrar juegos por género
-    juegos_por_genero = games[games['genres'].str.contains(genero, case=False, na=False)]
-
-    if juegos_por_genero.empty:
-        return {"No se encontraron juegos para el género": genero}
-
-    # Paso 2: Realizar un join entre "juegos_por_genero" y "items" para obtener las horas jugadas
-    merged_df = juegos_por_genero.merge(items, left_on='id', right_on='item_id', how='inner')
-
-    # Paso 3: Extraer el año de lanzamiento de la fecha y sumar las horas jugadas por año
-    merged_df['anio_lanzamiento'] = pd.to_datetime(merged_df['release_date']).dt.year
-    horas_por_anio = merged_df.groupby('anio_lanzamiento')['playtime_forever'].sum()
-
-    # Paso 4: Encontrar el año con la mayor cantidad de horas jugadas
-    anio_max_horas = horas_por_anio.idxmax()
-
-    # Paso 5: Devolver el resultado como un diccionario JSON
-    resultado = {"Año de lanzamiento con más horas jugadas para " + genero: str(anio_max_horas)}
-    return resultado
-
 
 
 @app.get('/UserForGenre/{genero}')
@@ -121,3 +99,69 @@ def sentiment_analysis(year: int):
 
     return result
 
+
+games['developer'].fillna('', inplace=True)
+games['tags'].fillna('', inplace=True)
+games['price'].fillna('', inplace=True)
+games['genres'].fillna('', inplace=True)
+
+# Procesar la columna 'genres'
+def process_genres(genres):
+    try:
+        genres_list = eval(genres)
+        if isinstance(genres_list, list):
+            return ' '.join(genres_list)
+    except:
+        pass
+    return ''
+
+games['genres'] = games['genres'].apply(process_genres)
+
+# Procesar la columna 'tags'
+def process_genres(tags):
+    try:
+        genres_list = eval(tags)
+        if isinstance(genres_list, list):
+            return ' '.join(genres_list)
+    except:
+        pass
+    return ''
+
+games['tags'] = games['tags'].apply(process_genres)
+
+# Crear una columna 'features' que contiene la concatenación de las columnas relevantes
+games['features'] = games['developer'] + ' ' + games['tags'] + ' ' + games['genres'] + ' ' + games['price'].astype(str)
+
+# Crear la matriz TF-IDF a partir de la columna 'features'
+tfidf_vectorizer = TfidfVectorizer()
+tfidf_matrix = tfidf_vectorizer.fit_transform(games['features'])
+
+# Entrenar el modelo Nearest Neighbors con la matriz TF-IDF
+nn_model = NearestNeighbors(n_neighbors=6, metric='cosine', algorithm='brute')
+nn_model.fit(tfidf_matrix)
+
+# Función para obtener recomendaciones de juegos similares
+@app.get('/recomendacion_juego/{product_id}')
+def recomendacion_juego(product_id: int):
+    # Encontrar el índice del juego en función del 'id' del producto
+    game_index = games[games['id'] == product_id].index[0]
+
+    # Encontrar los juegos más similares utilizando Nearest Neighbors
+    distances, indices = nn_model.kneighbors(tfidf_matrix[game_index], n_neighbors=6)
+
+    # Crear una lista de juegos recomendados (excluyendo el juego de consulta)
+    recommended_games = []
+    for i in range(1, len(indices[0])):
+        recommended_game = {
+            "id": int(games.iloc[indices[0][i]]['id']),  # Convierte a int
+            "app_name": str(games.iloc[indices[0][i]]['app_name']),  # Convierte a str
+        }
+        recommended_games.append(recommended_game)
+
+     # Obtener el juego de consulta
+    query_game = {
+        "id": int(games.iloc[game_index]['id']),
+        "app_name": str(games.iloc[game_index]['app_name']),
+    }
+
+    return {'juego_consulta': query_game, 'juegos_recomendados': recommended_games}
