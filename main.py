@@ -1,5 +1,6 @@
 import pandas as pd
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
 
@@ -36,7 +37,7 @@ def PlayTimeGenre(genero: str):
     anio_max_horas = horas_por_anio.idxmax()
 
     # Paso 5: Devolver el resultado como un diccionario JSON
-    resultado = {"Año de lanzamiento con más horas jugadas para " + genero: anio_max_horas}
+    resultado = {"Año de lanzamiento con más horas jugadas para " + genero: str(anio_max_horas)}
     return resultado
 
 
@@ -72,34 +73,32 @@ def UserForGenre(genero: str):
 @app.get('/UsersRecommend/{anio}')
 def UsersRecommend(anio: int):
     # Paso 1: Filtrar reseñas para el año dado y condiciones de recomendación
-    reseñas_filtradas = review[(review['recommend'] == True) & (review['sentiment_analysis'].isin([1.0, 2.0])) & (review['posted'].str.startswith(str(anio)))]
+    condiciones_filtrado = (review['recommend'] == True) & (review['sentiment_analysis'].isin([1.0, 2.0])) & (review['posted'].str.startswith(str(anio)))
+    reseñas_filtradas = review[condiciones_filtrado]
 
     # Paso 2: Contar cuántas veces se repite cada 'item_id'
     juegos_recomendados = reseñas_filtradas['item_id'].value_counts().head(3)
 
-    # Paso 3: Buscar los nombres de los juegos en el DataFrame 'games' mediante 'app_name'
-    nombres_juegos = games[games['id'].isin(juegos_recomendados.index)]['app_name'].tolist()
+    # Paso 3: Obtener los nombres de los juegos correspondientes
+    juegos_info = games.loc[games['id'].isin(juegos_recomendados.index), ['id', 'app_name']]
+    top_juegos_recomendados = [{"Nombre del Juego": row['app_name'], "Cantidad de Recomendaciones": int(juegos_recomendados[row['id']])} for _, row in juegos_info.iterrows()]
 
-    # Paso 4: Crear una lista de los juegos más recomendados con sus nombres
-    top_juegos_recomendados = [{"Nombre del Juego": nombre, "Cantidad de Recomendaciones": juegos_recomendados[juego_id]} for juego_id, nombre in zip(juegos_recomendados.index, nombres_juegos)]
-
-    return top_juegos_recomendados
+    return JSONResponse(content=top_juegos_recomendados)
 
 @app.get('/UsersNotRecommend/{anio}')
 def UsersNotRecommend(anio: int):
     # Paso 1: Filtrar reseñas para el año dado y condiciones de recomendación
-    reseñas_filtradas = review[(review['recommend'] == False) & (review['sentiment_analysis'] == 0.0) & (review['posted'].str.startswith(str(anio)))]
+    condiciones_filtrado = (review['recommend'] == False) & (review['sentiment_analysis'] == 0.0) & (review['posted'].str.startswith(str(anio)))
+    reseñas_filtradas = review[condiciones_filtrado]
 
     # Paso 2: Contar cuántas veces se repite cada 'item_id'
     juegos_recomendados = reseñas_filtradas['item_id'].value_counts().head(3)
 
-    # Paso 3: Buscar los nombres de los juegos en el DataFrame 'games' mediante 'app_name'
-    nombres_juegos = games[games['id'].isin(juegos_recomendados.index)]['app_name'].tolist()
+    # Paso 3: Obtener los nombres de los juegos correspondientes
+    juegos_info = games.loc[games['id'].isin(juegos_recomendados.index), ['id', 'app_name']]
+    top_juegos_recomendados = [{"Nombre del Juego": row['app_name'], "Cantidad de No Recomendaciones": int(juegos_recomendados[row['id']])} for _, row in juegos_info.iterrows()]
 
-    # Paso 4: Crear una lista de los juegos más recomendados con sus nombres
-    top_juegos_recomendados = [{"Nombre del Juego": nombre, "Cantidad de Recomendaciones": juegos_recomendados[juego_id]} for juego_id, nombre in zip(juegos_recomendados.index, nombres_juegos)]
-
-    return top_juegos_recomendados
+    return JSONResponse(content=top_juegos_recomendados)
 
 
 @app.get('/sentiment_analysis/{year}')
@@ -121,3 +120,4 @@ def sentiment_analysis(year: int):
     }
 
     return result
+
